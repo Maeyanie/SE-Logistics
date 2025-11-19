@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36705.20
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Logistics Leaf", "Logistics Leaf.csproj", "{8FD18B55-32C7-4DEA-8D05-845FFDE61712}"
+EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "Logistics Shared", "..\Logistics Shared\Logistics Shared.shproj", "{C1D67D90-F2D9-4E7F-BC8E-3C6DEBB3AE6E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8FD18B55-32C7-4DEA-8D05-845FFDE61712}.Debug|x64.ActiveCfg = Debug|x64
+		{8FD18B55-32C7-4DEA-8D05-845FFDE61712}.Debug|x64.Build.0 = Debug|x64
+		{8FD18B55-32C7-4DEA-8D05-845FFDE61712}.Release|x64.ActiveCfg = Release|x64
+		{8FD18B55-32C7-4DEA-8D05-845FFDE61712}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {261A569D-4A0F-4358-9732-88F2440DEECF}
+	EndGlobalSection
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		..\Logistics Shared\Logistics Shared.projitems*{8fd18b55-32c7-4dea-8d05-845ffde61712}*SharedItemsImports = 5
+		..\Logistics Shared\Logistics Shared.projitems*{c1d67d90-f2d9-4e7f-bc8e-3c6debb3ae6e}*SharedItemsImports = 13
+	EndGlobalSection
+EndGlobal

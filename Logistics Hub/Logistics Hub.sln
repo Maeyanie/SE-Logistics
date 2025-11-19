@@ -1,0 +1,45 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36705.20
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Logistics Hub", "Logistics Hub.csproj", "{A4E67B2D-EDA8-4BF0-A00C-99E423B90CE4}"
+EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "Logistics Shared", "..\Logistics Shared\Logistics Shared.shproj", "{C1D67D90-F2D9-4E7F-BC8E-3C6DEBB3AE6E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Logistics Leaf", "..\Logistics Leaf\Logistics Leaf.csproj", "{E79C09BA-1A90-28B0-F2AB-FA99DDF1D207}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Logistics Ship", "..\Logistics Ship\Logistics Ship.csproj", "{D3E0E2B4-190B-40E9-8B3C-38C6AA5AFC17}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A4E67B2D-EDA8-4BF0-A00C-99E423B90CE4}.Debug|x64.ActiveCfg = Debug|x64
+		{A4E67B2D-EDA8-4BF0-A00C-99E423B90CE4}.Debug|x64.Build.0 = Debug|x64
+		{A4E67B2D-EDA8-4BF0-A00C-99E423B90CE4}.Release|x64.ActiveCfg = Release|x64
+		{A4E67B2D-EDA8-4BF0-A00C-99E423B90CE4}.Release|x64.Build.0 = Release|x64
+		{E79C09BA-1A90-28B0-F2AB-FA99DDF1D207}.Debug|x64.ActiveCfg = Debug|x64
+		{E79C09BA-1A90-28B0-F2AB-FA99DDF1D207}.Debug|x64.Build.0 = Debug|x64
+		{E79C09BA-1A90-28B0-F2AB-FA99DDF1D207}.Release|x64.ActiveCfg = Release|x64
+		{E79C09BA-1A90-28B0-F2AB-FA99DDF1D207}.Release|x64.Build.0 = Release|x64
+		{D3E0E2B4-190B-40E9-8B3C-38C6AA5AFC17}.Debug|x64.ActiveCfg = Debug|x64
+		{D3E0E2B4-190B-40E9-8B3C-38C6AA5AFC17}.Debug|x64.Build.0 = Debug|x64
+		{D3E0E2B4-190B-40E9-8B3C-38C6AA5AFC17}.Release|x64.ActiveCfg = Release|x64
+		{D3E0E2B4-190B-40E9-8B3C-38C6AA5AFC17}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B2555CE3-6099-446C-80CA-144384FDAE92}
+	EndGlobalSection
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		..\Logistics Shared\Logistics Shared.projitems*{a4e67b2d-eda8-4bf0-a00c-99e423b90ce4}*SharedItemsImports = 5
+		..\Logistics Shared\Logistics Shared.projitems*{c1d67d90-f2d9-4e7f-bc8e-3c6debb3ae6e}*SharedItemsImports = 13
+		..\Logistics Shared\Logistics Shared.projitems*{d3e0e2b4-190b-40e9-8b3c-38c6aa5afc17}*SharedItemsImports = 5
+		..\Logistics Shared\Logistics Shared.projitems*{e79c09ba-1a90-28b0-f2ab-fa99ddf1d207}*SharedItemsImports = 5
+	EndGlobalSection
+EndGlobal
