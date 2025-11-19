@@ -1,9 +1,12 @@
 # SE-Logistics
 Some WIP logistics scripts for Space Engineers.
 
-Requires a SAM setup for the actual autopiloting from place to place.
+Requirements:
+- An antenna network allowing all leaves to communicate with their hub.
+- A functioning SAM setup for the actual autopiloting from place to place.
+- Every assigned cargo ship must be able to travel any route. Beware mountains and long-range trips.
 
-Working:
+Current Features:
 - Hubs (running Logistics Hub) will take import and export lists from both themselves and Leaves (running Logistics Leaf), and send cargo ships 
 (running Logistics Ship) to carry cargo from export to import.
 - Supports multiple independent networks using the Channel setting in custom data.
