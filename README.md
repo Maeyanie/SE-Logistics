@@ -10,6 +10,7 @@ Working:
 - Ships will self-load cargo.
 - Ships will refuel/recharge after each trip.
 - Ships can have a max mass set in their config, which is used by Hubs to limit their assigned cargo quantity.
+- If a station is importing Ingot/Whatever, it can optionally import Ore/Whatever to fulfill the demand if there aren't any exported ingots available.
 
 Future work:
 - Having ships return to a refuelling depot to refuel/recharge after each trip might be good, instead of expecting every importer to handle it.
@@ -17,3 +18,4 @@ Future work:
 - Transporting gases.
 - Status LCDs.
 - Refactor Hub to construct a job board and task ships with the best job, instead of the first valid job.
+- Ships currently only are assigned 1 cargo at a time. Using a job board would make it easier to merge trips to/from the same destinations.
