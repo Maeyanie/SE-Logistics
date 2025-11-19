@@ -34,7 +34,6 @@ namespace IngameScript
             {"Gold", 0.01f},
             {"Uranium", 0.01f},
             {"Platinum", 0.005f},
-            {"Ice", 1.0f},
         };
         public static Dictionary<string, string> oreMap = new Dictionary<string, string>() {
             {"Ingot/Aluminum", "Ore/Bauxite"},
