@@ -36,6 +36,9 @@ namespace IngameScript
             {"Platinum", 0.005f},
             {"Ice", 1.0f},
         };
+        public static Dictionary<string, string> oreMap = new Dictionary<string, string>() {
+            {"Ingot/Aluminum", "Ore/Bauxite"},
+        };
 
         public static Program program;
         public static MyIni ini;
@@ -262,9 +265,9 @@ namespace IngameScript
                         Me.CustomData = ini.ToString();
                     }
                     if (ini.Get("General", "RequestOresForIngots").ToBoolean(false) && need.StartsWith("Ingot/")) {
-                        float oreYield = oreYields.GetValueOrDefault(need.Substring(6), 0.7f);
+                        string ore = oreMap.GetValueOrDefault(need, "Ore/" + need.Substring(6));
+                        float oreYield = oreYields.GetValueOrDefault(ore.Substring(4), 0.7f);
 
-                        var ore = "Ore/" + need.Substring(6);
                         needed -= leaf.available(ore) * oreYield;
                         if (needed <= 0) {
                             Echo("Ore available sufficient to cover ingot need.");
