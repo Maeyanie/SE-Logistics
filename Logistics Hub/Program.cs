@@ -76,10 +76,14 @@ namespace IngameScript
                 dock = "";
             }
 
-            public void startJob(ShipJob job) {
+            public void startJob(ShipJob job, bool transmit = true) {
                 state = State.Starting;
                 this.job = job;
                 foreach (var stage in job.stages) {
+                    if (!leavesByName.ContainsKey(stage.destination)) {
+                        program.Echo($"Error: Leaf {stage.destination} not found for job assignment.");
+                        continue;
+                    }
                     Leaf leaf = leavesByName[stage.destination];
                     leaf.reservedDocks.Add(stage.dock);
 
@@ -98,12 +102,22 @@ namespace IngameScript
                             break;
                     }
                 }
-                string jobString = job.serialize();
-                program.IGC.SendUnicastMessage(igc, "MaeyLogistics-ShipJob", jobString);
+                if (transmit) {
+                    string jobString = job.serialize();
+                    program.IGC.SendUnicastMessage(igc, "MaeyLogistics-ShipJob", jobString);
+                }
             }
             public void finishJob() {
                 state = State.Idle;
+                if (job == null) {
+                    program.Echo($"ERR: finishJob called with null job.");
+                    return;
+                }
                 foreach (var stage in job.stages) {
+                    if (!leavesByName.ContainsKey(stage.destination)) {
+                        program.Echo($"Error: Leaf {stage.destination} not found for job completion.");
+                        continue;
+                    }
                     Leaf leaf = leavesByName[stage.destination];
                     leaf.reservedDocks.Remove(stage.dock);
                     switch (stage.action) {
@@ -122,6 +136,8 @@ namespace IngameScript
 
             public void update(ShipUpdateMessage msg) {
                 name = msg.shipName;
+                if (job == null) startJob(msg.job, false);
+
                 switch (msg.state) {
                     case "Idle": 
                         if (state != State.Idle) {
