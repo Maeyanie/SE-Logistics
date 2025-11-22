@@ -132,6 +132,30 @@ namespace IngameScript
 
         int counter = 0;
         public void Main(string argument, UpdateType updateSource) {
+            switch (argument) {
+                case "reset":
+                    state = State.Idle;
+                    destination = "";
+                    dock = "";
+                    step = 0;
+                    job = null;
+
+                    List<IMyShipConnector> connectors = new List<IMyShipConnector>();
+                    GridTerminalSystem.GetBlocksOfType(connectors, b => b.CubeGrid == program.Me.CubeGrid && b.IsConnected);
+                    foreach (var connector in connectors) {
+                        var match = samName.Match(connector.OtherConnector.CustomName);
+                        if (match.Success) {
+                            destination = connector.OtherConnector.CubeGrid.CustomName;
+                            dock = match.Groups[1].Captures[0].Value;
+                            break;
+                        }
+                    }
+
+                    Save();
+                    Echo("Reset state.");
+                    return;
+            }
+
             bool dirty = false;
             while (IGC.UnicastListener.HasPendingMessage) {
                 var message = IGC.UnicastListener.AcceptMessage();
@@ -331,6 +355,7 @@ namespace IngameScript
 
                 var cargo = cargoMissing.First();
                 var item = MyItemType.Parse("MyObjectBuilder_" + cargo.item);
+                var itemInfo = item.GetItemInfo();
 
                 foreach (var container in containers) {
                     var inv = container.GetInventory(0);
@@ -351,7 +376,7 @@ namespace IngameScript
                             Echo($"Loading {toTransfer} of {cargo.item} from {otherContainer.CustomName} to {container.CustomName}");
                             if (otherInv.TransferItemTo(inv, otherItem, toTransfer)) {
                                 cargo.qty -= toTransfer;
-                                emptySpace -= toTransfer;
+                                emptySpace -= toTransfer * itemInfo.Volume;
                             }
                             if (cargo.qty <= MyFixedPoint.Zero) return;
                         }

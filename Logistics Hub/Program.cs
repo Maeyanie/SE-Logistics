@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Security.Permissions;
 using System.Text;
 using Sandbox.Game.EntityComponents;
 using Sandbox.Game.Replication.StateGroups;
@@ -34,6 +35,7 @@ namespace IngameScript
             {"Gold", 0.01f},
             {"Uranium", 0.01f},
             {"Platinum", 0.005f},
+            {"Stone", 1.0f},
         };
         public static Dictionary<string, string> oreMap = new Dictionary<string, string>() {
             {"Ingot/Aluminum", "Ore/Bauxite"},
@@ -60,6 +62,7 @@ namespace IngameScript
             public MyFixedPoint freeMass;
             public string destination;
             public string dock;
+            public ShipJob job;
 
             public enum State {
                 Idle, Starting, Travelling, Loading, Unloading
@@ -73,10 +76,60 @@ namespace IngameScript
                 dock = "";
             }
 
+            public void startJob(ShipJob job) {
+                state = State.Starting;
+                this.job = job;
+                foreach (var stage in job.stages) {
+                    Leaf leaf = leavesByName[stage.destination];
+                    leaf.reservedDocks.Add(stage.dock);
+
+                    switch (stage.action) {
+                        case ShipJob.Stage.Action.Load:
+                        case ShipJob.Stage.Action.ChargeLoad:
+                            foreach (var cargo in stage.cargo) {
+                                leaf.reservedExports.Add(new Leaf.CargoReservation(name, cargo.item, cargo.qty));
+                            }
+                            break;
+                        case ShipJob.Stage.Action.Unload:
+                        case ShipJob.Stage.Action.ChargeUnload:
+                            foreach (var cargo in stage.cargo) {
+                                leaf.reservedImports.Add(new Leaf.CargoReservation(name, cargo.item, cargo.qty));
+                            }
+                            break;
+                    }
+                }
+                string jobString = job.serialize();
+                program.IGC.SendUnicastMessage(igc, "MaeyLogistics-ShipJob", jobString);
+            }
+            public void finishJob() {
+                state = State.Idle;
+                foreach (var stage in job.stages) {
+                    Leaf leaf = leavesByName[stage.destination];
+                    leaf.reservedDocks.Remove(stage.dock);
+                    switch (stage.action) {
+                        case ShipJob.Stage.Action.Load:
+                        case ShipJob.Stage.Action.ChargeLoad:
+                            leaf.reservedExports.RemoveWhere(i => i.ship == name);
+                            break;
+                        case ShipJob.Stage.Action.Unload:
+                        case ShipJob.Stage.Action.ChargeUnload:
+                            leaf.reservedImports.RemoveWhere(i => i.ship == name);
+                            break;
+                    }
+                }
+                job = null;
+            }
+
             public void update(ShipUpdateMessage msg) {
                 name = msg.shipName;
                 switch (msg.state) {
-                    case "Idle": state = State.Idle; break;
+                    case "Idle": 
+                        if (state != State.Idle) {
+                            program.Echo($"Ship {name} has finished her job.");
+                            finishJob();
+                            state = State.Idle;
+                        }
+                        break;
                     case "Starting": state = State.Starting; break;
                     case "Travelling": state = State.Travelling; break;
                     case "Loading": state = State.Loading; break;
@@ -109,8 +162,29 @@ namespace IngameScript
             public Dictionary<string, MyFixedPoint> exports;
             public Dictionary<string, MyFixedPoint> imports;
             public List<string> reservedDocks;
-            public Dictionary<string, MyFixedPoint> reservedExports;
-            public Dictionary<string, MyFixedPoint> reservedImports;
+            public HashSet<CargoReservation> reservedImports;
+            public HashSet<CargoReservation> reservedExports;
+
+            public class CargoReservation {
+                public readonly string ship;
+                public readonly string item;
+                public MyFixedPoint qty;
+
+                public CargoReservation(string ship, string item, MyFixedPoint qty) {
+                    this.ship = ship;
+                    this.item = item;
+                    this.qty = qty;
+                }
+
+                public override int GetHashCode() {
+                    return (ship + "|" + item).GetHashCode();
+                }
+                public override bool Equals(object obj) {
+                    CargoReservation other = obj as CargoReservation;
+                    if (other != null) return this.ship == other.ship && this.item == other.item;
+                    return false;
+                }
+            }
 
             public Leaf(string gridName) {
                 this.gridName = gridName;
@@ -119,8 +193,8 @@ namespace IngameScript
                 exports = new Dictionary<string, MyFixedPoint>();
                 imports = new Dictionary<string, MyFixedPoint>();
                 reservedDocks = new List<string>();
-                reservedExports = new Dictionary<string, MyFixedPoint>();
-                reservedImports = new Dictionary<string, MyFixedPoint>();
+                reservedExports = new HashSet<CargoReservation>();
+                reservedImports = new HashSet<CargoReservation>();
             }
             public void update(LeafUpdateMessage lum) {
                 lastUpdate = DateTime.Now;
@@ -144,7 +218,7 @@ namespace IngameScript
                 return null;
             }
             public string firstAvailableDock(Ship ship) {
-                if (ship.destination == program.Me.CubeGrid.CustomName && ship.dock != null && ship.dock != "")
+                if (ship.destination == gridName && ship.dock != null && ship.dock != "")
                     return ship.dock;
 
                 foreach (var dock in docks) {
@@ -153,10 +227,18 @@ namespace IngameScript
                 return null;
             }
             public MyFixedPoint available(string item) {
-                return exports.GetValueOrDefault(item, MyFixedPoint.Zero) - reservedExports.GetValueOrDefault(item, MyFixedPoint.Zero);
+                MyFixedPoint value = exports.GetValueOrDefault(item, MyFixedPoint.Zero);
+                foreach (var res in reservedExports) {
+                    if (res.item == item) value -= res.qty;
+                }
+                return value;
             }
             public MyFixedPoint needed(string item) {
-                return imports.GetValueOrDefault(item, MyFixedPoint.Zero) - reservedImports.GetValueOrDefault(item, MyFixedPoint.Zero);
+                MyFixedPoint value = imports.GetValueOrDefault(item, MyFixedPoint.Zero);
+                foreach (var res in reservedImports) {
+                    if (res.item == item) value -= res.qty;
+                }
+                return value;
             }
             public List<string> needed() {
                 List<string> ret = new List<string>();
@@ -289,7 +371,7 @@ namespace IngameScript
                 var available = other.available(need);
                 if (available != null && available > 0) {
                     Echo($"Found {available} at {other.gridName}");
-                    var otherDock = other.firstAvailableDock();
+                    var otherDock = other.firstAvailableDock(ship);
                     if (otherDock == null || otherDock == "") {
                         Echo($"But no free docks at {other.gridName}");
                         continue;
@@ -333,9 +415,8 @@ namespace IngameScript
 
                     job.stages = new List<ShipJob.Stage>() { pickup, dropoff };
 
-                    string jobString = job.serialize();
-                    Echo($"Assigning job to {ship.name}: {jobString}");
-                    IGC.SendUnicastMessage(ship.igc, "MaeyLogistics-ShipJob", jobString);
+                    Echo($"Assigning job to {ship.name}");
+                    ship.startJob(job);
                     return true;
                 }
             }

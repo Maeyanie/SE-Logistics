@@ -36,7 +36,7 @@ namespace IngameScript
         internal LeafUpdateMessage() {}
         public LeafUpdateMessage(MyGridProgram parent)
         {
-            gridName = parent.Me.CubeGrid.DisplayName;
+            gridName = parent.Me.CubeGrid.CustomName;
             docks = new List<string>();
             exports = new Dictionary<string, MyFixedPoint>();
             imports = new Dictionary<string, MyFixedPoint>();
