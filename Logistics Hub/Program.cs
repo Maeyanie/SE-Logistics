@@ -322,6 +322,8 @@ namespace IngameScript
                         }
                     }
                     leaf.update(new LeafUpdateMessage(this));
+
+                    updateLCDs();
                 }
 
                 TimeSpan staleness = DateTime.Now - leaf.lastUpdate;
@@ -476,6 +478,62 @@ namespace IngameScript
                 Echo($"Ship update from {sum.shipName} ({source})");
             }
             ship.update(sum);
+        }
+
+        void updateLCDs() {
+            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+            GridTerminalSystem.GetBlocksOfType(blocks, b => b.CustomName.Contains("[Logi]"));
+
+            foreach (var block in blocks) {
+                IMyTextSurface mts = block as IMyTextSurface;
+                if (mts != null) {
+                    updateLCDSurface(mts);
+                }
+
+                IMyTextSurfaceProvider mtsp = block as IMyTextSurfaceProvider;
+                if (mtsp != null) {
+                    updateLCDSurface(mtsp.GetSurface(0));
+                }
+            }
+        }
+        void updateLCDSurface(IMyTextSurface surface) {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("_Stations_");
+            foreach (Leaf leaf in leaves) {
+                sb.AppendLine($"{leaf.gridName}:");
+
+                sb.Append("   Docks:");
+                foreach (var d in leaf.docks) {
+                    if (leaf.reservedDocks.Contains(d)) {
+                        sb.Append($" *{d}");
+                    } else {
+                        sb.Append($" {d}");
+                    }
+                }
+                sb.AppendLine("");
+
+                if (leaf.imports != null && leaf.imports.Count > 0) {
+                    sb.AppendLine("Imports:");
+                    foreach (var import in leaf.imports) {
+                        sb.AppendLine($"   {import.Key} x {import.Value}");
+                    }
+                }
+                if (leaf.exports != null && leaf.exports.Count > 0) {
+                    sb.AppendLine("Exports:");
+                    foreach (var export in leaf.exports) {
+                        sb.AppendLine($"   {export.Key} x {export.Value}");
+                    }
+                }
+                sb.AppendLine("");
+            }
+
+
+            sb.AppendLine("_Ships_");
+            foreach (Ship ship in ships) {
+                sb.AppendLine($"{ship.name}: {ship.job}");
+            }
+
+            surface.WriteText(sb.ToString());
         }
     }
 }

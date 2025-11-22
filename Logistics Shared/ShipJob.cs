@@ -92,5 +92,20 @@ namespace IngameScript {
             }
             return job;
         }
+
+        public override string ToString() {
+            // FIXME: This makes some assuptions about the nature of jobs.
+            // In the current implementation they're always true, but it would be better to be flexible.
+            if (stages[0].cargo.Count == 0) {
+                return $"Move from {stages[0].destination} to {stages[1].destination}";
+            } else if (stages[0].cargo.Count == 1) {
+                return $"{stages[0].cargo.First().qty} {stages[0].cargo.First().item} from {stages[0].destination} to {stages[1].destination}";
+            } else {
+                return $"{stages[0].cargo.Count} items from {stages[0].destination} to {stages[1].destination}";
+            }
+        }
+        public static implicit operator string(ShipJob job) {
+            return job.ToString();
+        }
     }
 }
