@@ -90,14 +90,18 @@ namespace IngameScript
                     switch (stage.action) {
                         case ShipJob.Stage.Action.Load:
                         case ShipJob.Stage.Action.ChargeLoad:
-                            foreach (var cargo in stage.cargo) {
-                                leaf.reservedExports.Add(new Leaf.CargoReservation(name, cargo.item, cargo.qty));
+                            if (stage.cargo != null) {
+                                foreach (var cargo in stage.cargo) {
+                                    leaf.reservedExports.Add(new Leaf.CargoReservation(name, cargo.item, cargo.qty));
+                                }
                             }
                             break;
                         case ShipJob.Stage.Action.Unload:
                         case ShipJob.Stage.Action.ChargeUnload:
-                            foreach (var cargo in stage.cargo) {
-                                leaf.reservedImports.Add(new Leaf.CargoReservation(name, cargo.item, cargo.qty));
+                            if (stage.cargo != null) {
+                                foreach (var cargo in stage.cargo) {
+                                    leaf.reservedImports.Add(new Leaf.CargoReservation(name, cargo.item, cargo.qty));
+                                }
                             }
                             break;
                     }
@@ -136,7 +140,7 @@ namespace IngameScript
 
             public void update(ShipUpdateMessage msg) {
                 name = msg.shipName;
-                if (job == null) startJob(msg.job, false);
+                if (job == null && msg.job != null) startJob(msg.job, false);
 
                 switch (msg.state) {
                     case "Idle": 
@@ -530,7 +534,8 @@ namespace IngameScript
 
             sb.AppendLine("_Ships_");
             foreach (Ship ship in ships) {
-                sb.AppendLine($"{ship.name}: {ship.job}");
+                sb.AppendLine($"{ship.name}: {ship.state}");
+                sb.AppendLine($"   {ship.job}");
             }
 
             surface.WriteText(sb.ToString());
