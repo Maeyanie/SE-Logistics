@@ -418,7 +418,7 @@ namespace IngameScript
                     ship.freeVolume -= cargo.qty * itemInfo.Volume;
                     ship.freeMass -= cargo.qty * itemInfo.Mass;
 
-                    if (ship.freeMass > ship.maxMass * 0.5f && cargo.qty < needed * 0.25f) {
+                    if ((ship.freeMass < MyFixedPoint.MaxValue || ship.freeMass > ship.maxMass * 0.5f) && cargo.qty < needed * 0.25f) {
                         Echo("Job too small, waiting for more.");
                         continue;
                     }
