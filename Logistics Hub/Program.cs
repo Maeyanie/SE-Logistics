@@ -45,6 +45,7 @@ namespace IngameScript
         public static MyIni ini;
         public static IMyBroadcastListener igc;
         public static HashSet<string> items = new HashSet<string>();
+        public static JobBoard jobs = new JobBoard();
         public static List<Ship> ships = new List<Ship>();
         public static Dictionary<string, Ship> shipsByName = new Dictionary<string, Ship>();
         public static List<Leaf> leaves = new List<Leaf>();
@@ -317,9 +318,16 @@ namespace IngameScript
                             ships.Clear();
                         } else {
                             var shipList = shipString.Split(',');
+                            List<Ship> toRemove = null;
                             foreach (var s in ships) {
                                 if (!shipList.Contains(s.name)) {
                                     Echo($"Removed ship:{s.name}");
+                                    if (toRemove == null) toRemove = new List<Ship>();
+                                    toRemove.Add(s);
+                                }
+                            }
+                            if (toRemove != null) {
+                                foreach (var s in toRemove) {
                                     ships.Remove(s);
                                 }
                             }
@@ -328,15 +336,26 @@ namespace IngameScript
                     leaf.update(new LeafUpdateMessage(this));
 
                     updateLCDs();
+
+                    var ship = Ship.firstAvailableShip();
+                    if (ship == null) {
+                        Echo("No free ships.");
+                    } else {
+                        dispatch(ship);
+                    }
                 }
+
+
 
                 TimeSpan staleness = DateTime.Now - leaf.lastUpdate;
                 if (staleness.TotalSeconds > 60) {
-                    Echo($"Warning: {leaf.gridName} hasn't reported in {staleness.TotalSeconds} seconds. Skipping.");
+                    Echo($"Warning: {leaf.gridName} hasn't reported in {staleness.TotalSeconds} seconds.");
+                    jobs.removeAll(leaf.gridName);
                     return;
                 }
 
-                Echo($"Checking {leaf.gridName}...");
+                Echo($"Updating {leaf.gridName}...");
+                jobs.removeDest(leaf.gridName);
 
                 var needs = leaf.needed();
                 if (needs == null || needs.Count == 0) {
@@ -344,25 +363,11 @@ namespace IngameScript
                     return;
                 }
 
-                var ship = Ship.firstAvailableShip();
-                if (ship == null) {
-                    Echo("No free ships.");
-                    return;
-                }
-
-                var dock = leaf.firstAvailableDock(ship);
-                if (dock == null || dock == "") {
-                    Echo("No free docks.");
-                    return;
-                }
-
-                ship.freeVolume = ship.maxVolume;
-                ship.freeMass = ship.maxMass;
-                if (ship.freeMass == MyFixedPoint.Zero) ship.freeMass = MyFixedPoint.MaxValue;
                 foreach (var need in needs) {
                     var needed = leaf.needed(need);
                     Echo($"Needs {needed} {need}");
-                    if (fulfillNeed(ship, leaf, dock, need, needed)) return;
+                    fulfillNeed(leaf, need, needed);
+
                     if (!ini.ContainsKey("General", "RequestOresForIngots")) {
                         ini.Set("General", "RequestOresForIngots", "false");
                         Me.CustomData = ini.ToString();
@@ -378,9 +383,25 @@ namespace IngameScript
                         }
 
                         Echo($"No ingots available, trying {ore} instead.");
-                        if (fulfillNeed(ship, leaf, dock, ore, needed * (1.0f/oreYield))) return;
+                        fulfillNeed(leaf, ore, needed * (1.0f / oreYield));
                     }
                 }
+            }
+        }
+
+        public void fulfillNeed(Leaf leaf, string need, MyFixedPoint needed) {
+            MyItemType itemType = MyItemType.Parse("MyObjectBuilder_" + need);
+            MyItemInfo itemInfo = itemType.GetItemInfo();
+
+            foreach (var other in leaves) {
+                if (other == leaf) continue;
+                var available = other.available(need);
+                if (available != null && available > 0) {
+                    Echo($"Found {available} at {other.gridName}");
+                }
+                MyFixedPoint qty = MyFixedPoint.Min(needed, available);
+
+                jobs.setOrder(other.gridName, leaf.gridName, need, qty);
             }
         }
 
@@ -487,23 +508,37 @@ namespace IngameScript
             ship.update(sum);
         }
 
-        void updateLCDs() {
-            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
-            GridTerminalSystem.GetBlocksOfType(blocks, b => b.CustomName.Contains("[Logi]"));
+        void dispatch(Ship ship) {
+            var linksByVolume = jobs.linksByVolume();
+            foreach (var link in linksByVolume) {
+                string[] srcdst = link.Key.Split('|');
+                var orders = jobs.getOrdersFromTo(srcdst[0], srcdst[1]);
 
-            foreach (var block in blocks) {
-                IMyTextSurface mts = block as IMyTextSurface;
-                if (mts != null) {
-                    updateLCDSurface(mts);
-                }
-
-                IMyTextSurfaceProvider mtsp = block as IMyTextSurfaceProvider;
-                if (mtsp != null) {
-                    updateLCDSurface(mtsp.GetSurface(0));
-                }
             }
         }
-        void updateLCDSurface(IMyTextSurface surface) {
+
+        void updateLCDs() {
+            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+            GridTerminalSystem.SearchBlocksOfName("[LogiStatus]", blocks);
+            foreach (var block in blocks) {
+                IMyTextSurface mts = block as IMyTextSurface;
+                if (mts != null) updateSurface_LogiStatus(mts);
+
+                IMyTextSurfaceProvider mtsp = block as IMyTextSurfaceProvider;
+                if (mtsp != null) updateSurface_LogiStatus(mtsp.GetSurface(0));
+            }
+
+            blocks.Clear();
+            GridTerminalSystem.SearchBlocksOfName("[LogiJobs]", blocks);
+            foreach (var block in blocks) {
+                IMyTextSurface mts = block as IMyTextSurface;
+                if (mts != null) updateSurface_LogiJobs(mts);
+
+                IMyTextSurfaceProvider mtsp = block as IMyTextSurfaceProvider;
+                if (mtsp != null) updateSurface_LogiJobs(mtsp.GetSurface(0));
+            }
+        }
+        void updateSurface_LogiStatus(IMyTextSurface surface) {
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("_Stations_");
             foreach (Leaf leaf in leaves) {
@@ -543,5 +578,149 @@ namespace IngameScript
 
             surface.WriteText(sb.ToString());
         }
+        void updateSurface_LogiJobs(IMyTextSurface surface) {
+            var links = jobs.linksByVolume();
+            StringBuilder sb = new StringBuilder();
+
+            foreach (var link in links) {
+                string[] srcdst = link.Key.Split('|');
+                sb.AppendLine($"{srcdst[0]} -> {srcdst[1]}:");
+
+                var orders = jobs.getOrdersFromTo(srcdst[0], srcdst[1]);
+                foreach (var order in orders) {
+                    sb.AppendLine($"   {order.qty} x {order.item}");
+                }
+
+                sb.AppendLine("");
+            }
+
+            surface.WriteText(sb.ToString());
+        }
+    }
+
+    public class JobBoard {
+        public class Order {
+            public readonly string source;
+            public readonly string dest;
+            public readonly string item;
+            public MyFixedPoint qty;
+
+            public Order(string source, string dest, string item, MyFixedPoint qty) {
+                this.source = source;
+                this.dest = dest;
+                this.item = item;
+                this.qty = qty;
+            }
+            public override int GetHashCode() {
+                return (source + "|" + dest + "|" + item).GetHashCode();
+            }
+            public override bool Equals(object obj) {
+                Order other = obj as Order;
+                if (other != null) return this.source == other.source && this.dest == other.dest && this.item == other.item;
+                return false;
+            }
+            public bool Equals(string source, string dest, string item) {
+                return this.source == source && this.dest == dest && this.item == item;
+            }
+            public override string ToString() {
+                return $"{source} -> {dest}: {qty} x {item}";
+            }
+        }
+
+        public HashSet<Order> orders;
+        public List<KeyValuePair<string,MyFixedPoint>> linksByVolumeCache = null;
+
+        public JobBoard() {
+            orders = new HashSet<Order>();
+        }
+
+        /*public void setOrder(Order order) {
+            var existing = orders.FirstOrDefault(o => o.Equals(order));
+            if (existing != null) {
+                var item = MyItemType.Parse("MyObjectBuilder_" + order.item);
+                var itemInfo = item.GetItemInfo();
+                MyFixedPoint volume = existing.qty * itemInfo.Volume;
+
+                if (order.qty == MyFixedPoint.Zero) {
+                    orders.Remove(existing);
+                } else {
+                    volume = order.qty * itemInfo.Volume;
+                    existing.qty = order.qty;
+                }
+            } else {
+                if (order.qty != MyFixedPoint.Zero) {
+                    var item = MyItemType.Parse("MyObjectBuilder_" + order.item);
+                    var itemInfo = item.GetItemInfo();
+                    MyFixedPoint volume = order.qty * itemInfo.Volume;
+
+                    orders.Add(order);
+                }
+            }
+        }*/
+        public void setOrder(string source, string dest, string item, MyFixedPoint qty) {
+            var existing = orders.FirstOrDefault(o => o.Equals(source, dest, item));
+            if (existing != null) {
+                if (existing.qty == qty) return;
+
+                if (qty == MyFixedPoint.Zero) {
+                    orders.Remove(existing);
+                } else {
+                    existing.qty = qty;
+                }
+                linksByVolumeCache = null;
+            } else {
+                if (qty != MyFixedPoint.Zero) {
+                    orders.Add(new Order(source, dest, item, qty));
+                    linksByVolumeCache = null;
+                }
+            }
+        }
+
+        public List<Order> getOrdersFromTo(string from, string to) {
+            return orders.Where(o => o.source == from && o.dest == to).ToList();
+        }
+
+        public List<KeyValuePair<string,MyFixedPoint>> linksByVolume() {
+            if (linksByVolumeCache != null) return linksByVolumeCache;
+
+            Dictionary<string,MyFixedPoint> links = new Dictionary<string, MyFixedPoint>();
+
+            foreach (var order in orders) {
+                string link = $"{order.source}|{order.dest}";
+                var mobItem = MyItemType.Parse("MyObjectBuilder_" + order.item);
+                var itemInfo = mobItem.GetItemInfo();
+                MyFixedPoint volume = order.qty * itemInfo.Volume;
+
+                if (links.ContainsKey(link)) {
+                    links[link] += volume;
+                } else {
+                    links[link] = volume;
+                }
+            }
+
+            linksByVolumeCache = links.ToList();
+            linksByVolumeCache.Sort((a, b) => { return b.Value.ToIntSafe() - a.Value.ToIntSafe(); });
+
+            return linksByVolumeCache;
+        }
+
+        public void removeAll(string name) {
+            if (orders.RemoveWhere(o => o.source == name || o.dest == name) > 0) linksByVolumeCache = null;
+        }
+        public void removeDest(string name) {
+            if (orders.RemoveWhere(o => o.dest == name) > 0) linksByVolumeCache = null;
+        }
+
+        public override string ToString() {
+            StringBuilder sb = new StringBuilder();
+
+            foreach (var order in orders) {
+                sb.AppendLine(order.ToString());
+            }
+
+            return sb.ToString();
+        }
     }
 }
+
+
