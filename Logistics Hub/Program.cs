@@ -408,17 +408,20 @@ namespace IngameScript
                     MyFixedPoint maxQtyByVolume = ship.freeVolume * (1.0f/itemInfo.Volume);
                     cargo.qty = MyFixedPoint.Min(cargo.qty, maxQtyByVolume);
 
-                    MyFixedPoint maxQtyByMass = ship.freeMass * (1.0f/itemInfo.Mass);
+                    MyFixedPoint maxQtyByMass = (ship.maxMass == MyFixedPoint.Zero || ship.maxMass == MyFixedPoint.MaxValue)
+                        ? MyFixedPoint.MaxValue : ship.freeMass * (1.0f/itemInfo.Mass);
                     cargo.qty = MyFixedPoint.Min(cargo.qty, maxQtyByMass);
 
                     if (cargo.qty <= 0) {
                         Echo("Ship cannot carry any more.");
+                        Echo($"needed={needed}\navailable={available}\nqtyVolume={maxQtyByVolume}\nqtyMass={maxQtyByMass}");
+                        Echo($"freeMass={ship.freeMass}\nitemMass={itemInfo.Mass}");
                         return false;
                     }
                     ship.freeVolume -= cargo.qty * itemInfo.Volume;
                     ship.freeMass -= cargo.qty * itemInfo.Mass;
 
-                    if ((ship.freeMass < MyFixedPoint.MaxValue || ship.freeMass > ship.maxMass * 0.5f) && cargo.qty < needed * 0.25f) {
+                    if (ship.freeMass > ship.maxMass * 0.5f && ship.freeVolume > ship.maxVolume * 0.5f && cargo.qty < needed * 0.25f) {
                         Echo("Job too small, waiting for more.");
                         continue;
                     }
