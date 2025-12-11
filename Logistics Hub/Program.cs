@@ -588,7 +588,7 @@ namespace IngameScript
 
                 var orders = jobs.getOrdersFromTo(srcdst[0], srcdst[1]);
                 foreach (var order in orders) {
-                    sb.AppendLine($"   {order.qty} x {order.item}");
+                    sb.AppendLine($"   {order.item} x {order.qty}");
                 }
 
                 sb.AppendLine("");
