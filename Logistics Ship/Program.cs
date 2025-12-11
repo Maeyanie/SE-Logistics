@@ -108,6 +108,9 @@ namespace IngameScript
                 if (match.Success) {
                     destination = connector.OtherConnector.CubeGrid.CustomName;
                     dock = match.Groups[1].Captures[0].Value;
+                    ini.Set("State", "Destination", destination);
+                    ini.Set("State", "Dock", dock);
+                    Me.CustomData = ini.ToString();
                     break;
                 }
             }

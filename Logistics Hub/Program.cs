@@ -25,6 +25,8 @@ namespace IngameScript
 {
     public partial class Program : MyGridProgram
     {
+        const int LOG_LENGTH = 100;
+
         public static Dictionary<string, float> oreYields = new Dictionary<string, float>() {
             {"Iron", 0.7f},
             {"Silicon", 0.7f},
@@ -50,6 +52,7 @@ namespace IngameScript
         public static Dictionary<string, Ship> shipsByName = new Dictionary<string, Ship>();
         public static List<Leaf> leaves = new List<Leaf>();
         public static Dictionary<string, Leaf> leavesByName = new Dictionary<string, Leaf>();
+        public static LinkedList<string> logLines = new LinkedList<string>();
 
         static readonly char[] newline = new char[] { '\n' };
         static System.Text.RegularExpressions.Regex samName = new System.Text.RegularExpressions.Regex(@"\[SAM .*Name=([\w]+).*\]");
@@ -82,7 +85,7 @@ namespace IngameScript
                 this.job = job;
                 foreach (var stage in job.stages) {
                     if (!leavesByName.ContainsKey(stage.destination)) {
-                        program.Echo($"Error: Leaf {stage.destination} not found for job assignment.");
+                        program.log($"Error: Leaf {stage.destination} not found for job assignment.");
                         continue;
                     }
                     Leaf leaf = leavesByName[stage.destination];
@@ -115,12 +118,12 @@ namespace IngameScript
             public void finishJob() {
                 state = State.Idle;
                 if (job == null) {
-                    program.Echo($"ERR: finishJob called with null job.");
+                    program.log($"ERR: finishJob called with null job.");
                     return;
                 }
                 foreach (var stage in job.stages) {
                     if (!leavesByName.ContainsKey(stage.destination)) {
-                        program.Echo($"Error: Leaf {stage.destination} not found for job completion.");
+                        program.log($"Error: Leaf {stage.destination} not found for job completion.");
                         continue;
                     }
                     Leaf leaf = leavesByName[stage.destination];
@@ -146,7 +149,7 @@ namespace IngameScript
                 switch (msg.state) {
                     case "Idle": 
                         if (state != State.Idle) {
-                            program.Echo($"Ship {name} has finished her job.");
+                            program.log($"Ship {name} has finished her job.");
                             finishJob();
                             state = State.Idle;
                         }
@@ -281,9 +284,12 @@ namespace IngameScript
 
             igc = IGC.RegisterBroadcastListener("MaeyLogistics-"+ini.Get("General", "Channel").ToString("Default"));
             Runtime.UpdateFrequency = UpdateFrequency.Update100;
-            leaves.Add(new Leaf(Me.CubeGrid.CustomName));
 
-            Echo("Ready.");
+            Leaf self = new Leaf(Me.CubeGrid.CustomName);
+            leaves.Add(self);
+            leavesByName[self.gridName] = self;
+
+            log("Ready.");
         }
 
         public void Save() { }
@@ -303,7 +309,7 @@ namespace IngameScript
                         handleShipUpdate(igcMessage.Source, parts[1]);
                         break;
                     default:
-                        Echo($"Unknown message type: {parts[0]}");
+                        log($"Unknown message type: {parts[0]}");
                         continue;
                 }
             }
@@ -321,7 +327,7 @@ namespace IngameScript
                             List<Ship> toRemove = null;
                             foreach (var s in ships) {
                                 if (!shipList.Contains(s.name)) {
-                                    Echo($"Removed ship:{s.name}");
+                                    log($"Removed ship:{s.name}");
                                     if (toRemove == null) toRemove = new List<Ship>();
                                     toRemove.Add(s);
                                 }
@@ -339,7 +345,7 @@ namespace IngameScript
 
                     var ship = Ship.firstAvailableShip();
                     if (ship == null) {
-                        Echo("No free ships.");
+                        log("No free ships.");
                     } else {
                         dispatch(ship);
                     }
@@ -349,23 +355,23 @@ namespace IngameScript
 
                 TimeSpan staleness = DateTime.Now - leaf.lastUpdate;
                 if (staleness.TotalSeconds > 60) {
-                    Echo($"Warning: {leaf.gridName} hasn't reported in {staleness.TotalSeconds} seconds.");
+                    log($"Warning: {leaf.gridName} hasn't reported in {staleness.TotalSeconds} seconds.");
                     jobs.removeAll(leaf.gridName);
                     return;
                 }
 
-                Echo($"Updating {leaf.gridName}...");
+                log($"Updating {leaf.gridName}...");
                 jobs.removeDest(leaf.gridName);
 
                 var needs = leaf.needed();
                 if (needs == null || needs.Count == 0) {
-                    Echo("No demands.");
+                    log("No demands.");
                     return;
                 }
 
                 foreach (var need in needs) {
                     var needed = leaf.needed(need);
-                    Echo($"Needs {needed} {need}");
+                    log($"Needs {needed} {need}");
                     fulfillNeed(leaf, need, needed);
 
                     if (!ini.ContainsKey("General", "RequestOresForIngots")) {
@@ -378,11 +384,11 @@ namespace IngameScript
 
                         needed -= leaf.available(ore) * oreYield;
                         if (needed <= 0) {
-                            Echo("Ore available sufficient to cover ingot need.");
+                            log("Ore available sufficient to cover ingot need.");
                             continue;
                         }
 
-                        Echo($"No ingots available, trying {ore} instead.");
+                        log($"No ingots available, trying {ore} instead.");
                         fulfillNeed(leaf, ore, needed * (1.0f / oreYield));
                     }
                 }
@@ -397,7 +403,7 @@ namespace IngameScript
                 if (other == leaf) continue;
                 var available = other.available(need);
                 if (available != null && available > 0) {
-                    Echo($"Found {available} at {other.gridName}");
+                    log($"Found {available} at {other.gridName}");
                 }
                 MyFixedPoint qty = MyFixedPoint.Min(needed, available);
 
@@ -413,10 +419,10 @@ namespace IngameScript
                 if (other == leaf) continue;
                 var available = other.available(need);
                 if (available != null && available > 0) {
-                    Echo($"Found {available} at {other.gridName}");
+                    log($"Found {available} at {other.gridName}");
                     var otherDock = other.firstAvailableDock(ship);
                     if (otherDock == null || otherDock == "") {
-                        Echo($"But no free docks at {other.gridName}");
+                        log($"But no free docks at {other.gridName}");
                         continue;
                     }
 
@@ -434,16 +440,16 @@ namespace IngameScript
                     cargo.qty = MyFixedPoint.Min(cargo.qty, maxQtyByMass);
 
                     if (cargo.qty <= 0) {
-                        Echo("Ship cannot carry any more.");
-                        Echo($"needed={needed}\navailable={available}\nqtyVolume={maxQtyByVolume}\nqtyMass={maxQtyByMass}");
-                        Echo($"freeMass={ship.freeMass}\nitemMass={itemInfo.Mass}");
+                        log("Ship cannot carry any more.");
+                        log($"needed={needed}\navailable={available}\nqtyVolume={maxQtyByVolume}\nqtyMass={maxQtyByMass}");
+                        log($"freeMass={ship.freeMass}\nitemMass={itemInfo.Mass}");
                         return false;
                     }
                     ship.freeVolume -= cargo.qty * itemInfo.Volume;
                     ship.freeMass -= cargo.qty * itemInfo.Mass;
 
                     if (ship.freeMass > ship.maxMass * 0.5f && ship.freeVolume > ship.maxVolume * 0.5f && cargo.qty < needed * 0.25f) {
-                        Echo("Job too small, waiting for more.");
+                        log("Job too small, waiting for more.");
                         continue;
                     }
 
@@ -461,7 +467,7 @@ namespace IngameScript
 
                     job.stages = new List<ShipJob.Stage>() { pickup, dropoff };
 
-                    Echo($"Assigning job to {ship.name}");
+                    log($"Assigning job to {ship.name}");
                     ship.startJob(job);
                     return true;
                 }
@@ -474,18 +480,18 @@ namespace IngameScript
             if (lum == null) return;
             Leaf leaf = leavesByName.GetValueOrDefault(lum.gridName);
             if (leaf == null) {
-                Echo($"New leaf registered: {lum.gridName} ({source})");
+                log($"New leaf registered: {lum.gridName} ({source})");
                 leaf = new Leaf(lum.gridName);
                 leaves.Add(leaf);
                 leavesByName[lum.gridName] = leaf;
             } else {
-                Echo($"Leaf update from {lum.gridName} ({source})");
+                log($"Leaf update from {lum.gridName} ({source})");
             }
             leaf.update(lum);
         }
 
         void handleShipUpdate(long source, string data) {
-            Echo($"Received ShipUpdate from {source}: {data}");
+            log($"Received ShipUpdate from {source}: {data}");
             ShipUpdateMessage sum = ShipUpdateMessage.deserialize(data);
             if (sum == null) return;
 
@@ -494,26 +500,96 @@ namespace IngameScript
                 var shipString = ini.Get("General", "Ships").ToString();
                 var shipList = shipString.Split(',');
                 if (!shipList.Contains(sum.shipName)) {
-                    Echo($"Ignoring unregistered ship: {sum.shipName} ({source})");
+                    log($"Ignoring unregistered ship: {sum.shipName} ({source})");
                     return;
                 }
 
-                Echo($"New ship registered: {sum.shipName} ({source})");
+                log($"New ship registered: {sum.shipName} ({source})");
                 ship = new Ship(sum.shipName, source);
                 ships.Add(ship);
                 shipsByName[sum.shipName] = ship;
             } else {
-                Echo($"Ship update from {sum.shipName} ({source})");
+                log($"Ship update from {sum.shipName} ({source})");
             }
             ship.update(sum);
         }
 
         void dispatch(Ship ship) {
+            log($"Dispatching {ship.name}");
+            ship.freeVolume = ship.maxVolume;
+            ship.freeMass = ship.maxMass;
             var linksByVolume = jobs.linksByVolume();
             foreach (var link in linksByVolume) {
                 string[] srcdst = link.Key.Split('|');
-                var orders = jobs.getOrdersFromTo(srcdst[0], srcdst[1]);
+                log($"Checking {srcdst[0]} -> {srcdst[1]}");
 
+                var src = leavesByName[srcdst[0]];
+                var srcDock = src.firstAvailableDock(ship);
+                if (srcDock == null || srcDock == "") {
+                    log($"No free docks at {src.gridName}");
+                    continue;
+                }
+                log($"From {srcDock}");
+
+                var dst = leavesByName[srcdst[1]];
+                var dstDock = dst.firstAvailableDock(ship);
+                if (dstDock == null || dstDock == "") {
+                    log($"No free docks at {dst.gridName}");
+                    continue;
+                }
+                log($"To {dstDock}");
+
+                var orders = jobs.getOrdersFromTo(srcdst[0], srcdst[1]);
+                log($"Found {orders.Count} orders");
+
+                ShipJob job = new ShipJob();
+                List<ShipJob.Cargo> cargo = new List<ShipJob.Cargo>();
+
+                foreach (var order in orders) {
+                    log($"Ordered cargo: {order.item} x {order.qty}");
+                    MyItemType itemType = MyItemType.Parse("MyObjectBuilder_" + order.item);
+                    MyItemInfo itemInfo = itemType.GetItemInfo();
+
+                    ShipJob.Cargo item = new ShipJob.Cargo();
+                    item.item = order.item;
+                    item.qty = order.qty;
+
+                    MyFixedPoint maxQtyByVolume = ship.freeVolume * (1.0f / itemInfo.Volume);
+                    item.qty = MyFixedPoint.Min(item.qty, maxQtyByVolume);
+
+                    MyFixedPoint maxQtyByMass = (ship.maxMass == MyFixedPoint.Zero || ship.maxMass == MyFixedPoint.MaxValue)
+                        ? MyFixedPoint.MaxValue : ship.freeMass * (1.0f / itemInfo.Mass);
+                    item.qty = MyFixedPoint.Min(item.qty, maxQtyByMass);
+
+                    if (item.qty <= 0) {
+                        log("Ship cannot carry any more.");
+                        log($"ordered={order.qty}\nvolume={maxQtyByVolume}\nmass={maxQtyByMass}");
+                        log($"freeMass={ship.freeMass}\nitemMass={itemInfo.Mass}");
+                        break;
+                    }
+                    ship.freeVolume -= item.qty * itemInfo.Volume;
+                    ship.freeMass -= item.qty * itemInfo.Mass;
+                    cargo.Add(item);
+                    log($"Added cargo: {item.item} x {item.qty}");
+                }
+
+                ShipJob.Stage pickup = new ShipJob.Stage();
+                pickup.destination = src.gridName;
+                pickup.dock = srcDock;
+                pickup.action = ShipJob.Stage.Action.Load;
+                pickup.cargo = cargo;
+
+                ShipJob.Stage dropoff = new ShipJob.Stage();
+                dropoff.destination = dst.gridName;
+                dropoff.dock = dstDock;
+                dropoff.action = ShipJob.Stage.Action.ChargeUnload;
+                dropoff.cargo = cargo;
+
+                job.stages = new List<ShipJob.Stage>() { pickup, dropoff };
+
+                log($"Assigning job to {ship.name}:\n{job.ToString()}");
+                ship.startJob(job);
+                return;
             }
         }
 
@@ -536,6 +612,16 @@ namespace IngameScript
 
                 IMyTextSurfaceProvider mtsp = block as IMyTextSurfaceProvider;
                 if (mtsp != null) updateSurface_LogiJobs(mtsp.GetSurface(0));
+            }
+
+            blocks.Clear();
+            GridTerminalSystem.SearchBlocksOfName("[LogiLog]", blocks);
+            foreach (var block in blocks) {
+                IMyTextSurface mts = block as IMyTextSurface;
+                if (mts != null) updateSurface_LogiLog(mts);
+
+                IMyTextSurfaceProvider mtsp = block as IMyTextSurfaceProvider;
+                if (mtsp != null) updateSurface_LogiLog(mtsp.GetSurface(0));
             }
         }
         void updateSurface_LogiStatus(IMyTextSurface surface) {
@@ -596,6 +682,27 @@ namespace IngameScript
 
             surface.WriteText(sb.ToString());
         }
+        void updateSurface_LogiLog(IMyTextSurface surface) {
+            float screenSize = surface.SurfaceSize.Y;
+            float fontSize = surface.FontSize;
+            int lines = (int)Math.Floor(screenSize / fontSize);
+
+            int i = 0;
+            StringBuilder sb = new StringBuilder();
+            foreach (var line in logLines) {
+                if (i++ >= lines) break;
+                sb.AppendLine(line);
+            }
+            surface.WriteText(sb.ToString());
+        }
+
+        public void log(string msg) {
+            base.Echo(msg);
+            logLines.AddFirst(msg);
+            while (logLines.Count > LOG_LENGTH) 
+                logLines.RemoveLast();
+        }
+
     }
 
     public class JobBoard {
