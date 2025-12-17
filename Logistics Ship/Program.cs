@@ -401,11 +401,27 @@ namespace IngameScript
         void runUnloading() {
             List<IMyCargoContainer> containers = new List<IMyCargoContainer>();
             GridTerminalSystem.GetBlocksOfType(containers, b => program.Me.CubeGrid == b.CubeGrid && b.CustomName.Contains("[SAM]"));
+
+            List<IMyCargoContainer> dropContainers = new List<IMyCargoContainer>();
+            GridTerminalSystem.GetBlocksOfType(dropContainers, b => program.Me.CubeGrid != b.CubeGrid && b.CustomName.Contains("Dropoff"));
+
+            var isEmpty = true;
             foreach (var b in containers) {
                 var inv = b.GetInventory(0);
                 if (inv == null) continue;
-                if (inv.GetItemAt(0) != null) return; // Not empty yet.
+                var item = inv.GetItemAt(0);
+                if (item != null) {
+                    isEmpty = false;
+                    foreach (var d in dropContainers) {
+                        var dinv = d.GetInventory(0);
+                        if (dinv == null) continue;
+                        if (dinv.CurrentVolume >= dinv.MaxVolume * FULL_CARGO_THRESHOLD) continue;
+
+                        if (inv.TransferItemTo(dinv, (MyInventoryItem)item)) return;
+                    }
+                }
             }
+            if (!isEmpty) return;
 
             if (!finishedCharging()) {
                 Echo("Still charging...");

@@ -372,7 +372,7 @@ namespace IngameScript
                 foreach (var need in needs) {
                     var needed = leaf.needed(need);
                     log($"Needs {needed} {need}");
-                    fulfillNeed(leaf, need, needed);
+                    if (fulfillNeed(leaf, need, needed)) continue;
 
                     if (!ini.ContainsKey("General", "RequestOresForIngots")) {
                         ini.Set("General", "RequestOresForIngots", "false");
@@ -395,20 +395,21 @@ namespace IngameScript
             }
         }
 
-        public void fulfillNeed(Leaf leaf, string need, MyFixedPoint needed) {
+        bool fulfillNeed(Leaf leaf, string need, MyFixedPoint needed) {
             MyItemType itemType = MyItemType.Parse("MyObjectBuilder_" + need);
             MyItemInfo itemInfo = itemType.GetItemInfo();
 
             foreach (var other in leaves) {
                 if (other == leaf) continue;
                 var available = other.available(need);
-                if (available != null && available > 0) {
+                if (available != null && available > MyFixedPoint.Zero) {
                     log($"Found {available} at {other.gridName}");
+                    MyFixedPoint qty = MyFixedPoint.Min(needed, available);
+                    jobs.setOrder(other.gridName, leaf.gridName, need, qty);
+                    return true;
                 }
-                MyFixedPoint qty = MyFixedPoint.Min(needed, available);
-
-                jobs.setOrder(other.gridName, leaf.gridName, need, qty);
             }
+            return false;
         }
 
         bool fulfillNeed(Ship ship, Leaf leaf, string dock, string need, MyFixedPoint needed) {
