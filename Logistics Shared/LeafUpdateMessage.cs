@@ -136,7 +136,8 @@ namespace IngameScript
                         entry = entry.Substring(0, entry.Length - 1);
                         continue;
                     }
-                } while (false);
+                    break;
+                } while (true);
 
                 var target = MyFixedPoint.DeserializeString(entry);
                 var current = stored.ContainsKey("MyObjectBuilder_" + type) ? stored["MyObjectBuilder_" + type] : MyFixedPoint.Zero;

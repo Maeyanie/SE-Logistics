@@ -53,6 +53,8 @@ namespace IngameScript
         public static List<Leaf> leaves = new List<Leaf>();
         public static Dictionary<string, Leaf> leavesByName = new Dictionary<string, Leaf>();
         public static LinkedList<string> logLines = new LinkedList<string>();
+        public bool chargePickup = true;
+        public bool chargeDropoff = true;
 
         static readonly char[] newline = new char[] { '\n' };
         static System.Text.RegularExpressions.Regex samName = new System.Text.RegularExpressions.Regex(@"\[SAM .*Name=([\w]+).*\]");
@@ -282,6 +284,17 @@ namespace IngameScript
             ini = new MyIni();
             ini.TryParse(Me.CustomData);
 
+            if (!ini.ContainsSection("General")) {
+                ini.AddSection("General");
+                ini.Set("General", "Channel", "Default");
+                ini.Set("General", "Docks", "");
+                ini.Set("General", "Ships", "");
+                ini.Set("General", "RequestOresForIngots", true);
+                ini.Set("General", "ChargePickup", true);
+                ini.Set("General", "ChargeDropoff", true);
+                Me.CustomData = ini.ToString();
+            }
+
             igc = IGC.RegisterBroadcastListener("MaeyLogistics-"+ini.Get("General", "Channel").ToString("Default"));
             Runtime.UpdateFrequency = UpdateFrequency.Update100;
 
@@ -338,6 +351,9 @@ namespace IngameScript
                                 }
                             }
                         }
+
+                        chargePickup = ini.Get("General", "ChargePickup").ToBoolean(true);
+                        chargeDropoff = ini.Get("General", "ChargeDropoff").ToBoolean(true);
                     }
                     leaf.update(new LeafUpdateMessage(this));
 
@@ -530,7 +546,7 @@ namespace IngameScript
                     log($"No free docks at {src.gridName}");
                     continue;
                 }
-                log($"From {srcDock}");
+                log($"From: {srcDock}");
 
                 var dst = leavesByName[srcdst[1]];
                 var dstDock = dst.firstAvailableDock(ship);
@@ -538,10 +554,19 @@ namespace IngameScript
                     log($"No free docks at {dst.gridName}");
                     continue;
                 }
-                log($"To {dstDock}");
+                log($"To: {dstDock}");
 
                 var orders = jobs.getOrdersFromTo(srcdst[0], srcdst[1]);
-                log($"Found {orders.Count} orders");
+                log($"Orders: {orders.Count}");
+                orders.Sort((a, b) => {
+                    MyItemType itemA = MyItemType.Parse("MyObjectBuilder_" + a.item);
+                    MyItemInfo itemInfoA = itemA.GetItemInfo();
+                    MyFixedPoint volumeA = a.qty * itemInfoA.Volume;
+                    MyItemType itemB = MyItemType.Parse("MyObjectBuilder_" + b.item);
+                    MyItemInfo itemInfoB = itemB.GetItemInfo();
+                    MyFixedPoint volumeB = b.qty * itemInfoB.Volume;
+                    return volumeB.ToIntSafe() - volumeA.ToIntSafe();
+                });
 
                 ShipJob job = new ShipJob();
                 List<ShipJob.Cargo> cargo = new List<ShipJob.Cargo>();
@@ -555,6 +580,8 @@ namespace IngameScript
                     item.item = order.item;
                     item.qty = order.qty;
 
+                    if (!itemInfo.UsesFractions) item.qty = MyFixedPoint.Ceiling(item.qty);
+
                     MyFixedPoint maxQtyByVolume = ship.freeVolume * (1.0f / itemInfo.Volume);
                     item.qty = MyFixedPoint.Min(item.qty, maxQtyByVolume);
 
@@ -562,12 +589,15 @@ namespace IngameScript
                         ? MyFixedPoint.MaxValue : ship.freeMass * (1.0f / itemInfo.Mass);
                     item.qty = MyFixedPoint.Min(item.qty, maxQtyByMass);
 
+                    if (!itemInfo.UsesFractions) item.qty = MyFixedPoint.Floor(item.qty);
+
                     if (item.qty <= 0) {
                         log("Ship cannot carry any more.");
                         log($"ordered={order.qty}\nvolume={maxQtyByVolume}\nmass={maxQtyByMass}");
                         log($"freeMass={ship.freeMass}\nitemMass={itemInfo.Mass}");
                         break;
                     }
+
                     ship.freeVolume -= item.qty * itemInfo.Volume;
                     ship.freeMass -= item.qty * itemInfo.Mass;
                     cargo.Add(item);
@@ -577,13 +607,13 @@ namespace IngameScript
                 ShipJob.Stage pickup = new ShipJob.Stage();
                 pickup.destination = src.gridName;
                 pickup.dock = srcDock;
-                pickup.action = ShipJob.Stage.Action.Load;
+                pickup.action = chargePickup ? ShipJob.Stage.Action.ChargeLoad : ShipJob.Stage.Action.Load;
                 pickup.cargo = cargo;
 
                 ShipJob.Stage dropoff = new ShipJob.Stage();
                 dropoff.destination = dst.gridName;
                 dropoff.dock = dstDock;
-                dropoff.action = ShipJob.Stage.Action.ChargeUnload;
+                dropoff.action = chargeDropoff ? ShipJob.Stage.Action.ChargeUnload : ShipJob.Stage.Action.Unload;
                 dropoff.cargo = cargo;
 
                 job.stages = new List<ShipJob.Stage>() { pickup, dropoff };
