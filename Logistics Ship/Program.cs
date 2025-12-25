@@ -102,7 +102,7 @@ namespace IngameScript
 
             // Just in case we aren't docked where we think we are.
             List<IMyShipConnector> connectors = new List<IMyShipConnector>();
-            GridTerminalSystem.GetBlocksOfType(connectors, b => b.CubeGrid == program.Me.CubeGrid && b.IsConnected);
+            GridTerminalSystem.GetBlocksOfType(connectors, b => b.CubeGrid == program.Me.CubeGrid && b.IsConnected && b.OtherConnector?.CubeGrid != program.Me.CubeGrid);
             foreach (var connector in connectors) {
                 var match = samName.Match(connector.OtherConnector.CustomName);
                 if (match.Success) {
@@ -144,7 +144,7 @@ namespace IngameScript
                     job = null;
 
                     List<IMyShipConnector> connectors = new List<IMyShipConnector>();
-                    GridTerminalSystem.GetBlocksOfType(connectors, b => b.CubeGrid == program.Me.CubeGrid && b.IsConnected);
+                    GridTerminalSystem.GetBlocksOfType(connectors, b => b.CubeGrid == program.Me.CubeGrid && b.IsConnected && b.OtherConnector?.CubeGrid != program.Me.CubeGrid);
                     foreach (var connector in connectors) {
                         var match = samName.Match(connector.OtherConnector.CustomName);
                         if (match.Success) {
@@ -283,9 +283,9 @@ namespace IngameScript
 
         void runTravel() {
             List<IMyShipConnector> connectors = new List<IMyShipConnector>();
-            GridTerminalSystem.GetBlocksOfType(connectors, b => b.CubeGrid == program.Me.CubeGrid);
+            GridTerminalSystem.GetBlocksOfType(connectors, b => b.CubeGrid == Me.CubeGrid);
             foreach (var connector in connectors) {
-                if (connector.IsConnected) {
+                if (connector.IsConnected && connector.OtherConnector?.CubeGrid != Me.CubeGrid) {
                     // Arrived
                     Echo("Arrived at destination.");
                     startNextStep();
@@ -297,7 +297,7 @@ namespace IngameScript
         void runLoading() {
             bool isFull = true;
             List<IMyCargoContainer> containers = new List<IMyCargoContainer>();
-            GridTerminalSystem.GetBlocksOfType(containers, b => program.Me.CubeGrid == b.CubeGrid && b.CustomName.Contains("[SAM]"));
+            GridTerminalSystem.GetBlocksOfType(containers, b => Me.CubeGrid == b.CubeGrid && b.CustomName.Contains("[SAM]"));
             foreach (var container in containers) {
                 var inv = container.GetInventory(0);
                 if (inv == null) continue;
@@ -359,6 +359,7 @@ namespace IngameScript
                 var cargo = cargoMissing.First();
                 var item = MyItemType.Parse("MyObjectBuilder_" + cargo.item);
                 var itemInfo = item.GetItemInfo();
+                if (!itemInfo.UsesFractions) cargo.qty = MyFixedPoint.Ceiling(cargo.qty);
 
                 foreach (var container in containers) {
                     var inv = container.GetInventory(0);
@@ -375,6 +376,7 @@ namespace IngameScript
 
                         foreach (var otherItem in otherItems) {
                             MyFixedPoint toTransfer = MyFixedPoint.Min(MyFixedPoint.Min(otherItem.Amount, cargo.qty), emptySpace);
+                            if (!itemInfo.UsesFractions) toTransfer = MyFixedPoint.Floor(toTransfer);
 
                             Echo($"Loading {toTransfer} of {cargo.item} from {otherContainer.CustomName} to {container.CustomName}");
                             if (otherInv.TransferItemTo(inv, otherItem, toTransfer)) {
