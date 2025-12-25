@@ -556,65 +556,56 @@ namespace IngameScript
                 }
                 log($"To: {dstDock}");
 
-                var orders = jobs.getOrdersFromTo(srcdst[0], srcdst[1]);
-                log($"Orders: {orders.Count}");
-                orders.Sort((a, b) => {
-                    MyItemType itemA = MyItemType.Parse("MyObjectBuilder_" + a.item);
-                    MyItemInfo itemInfoA = itemA.GetItemInfo();
-                    MyFixedPoint volumeA = a.qty * itemInfoA.Volume;
-                    MyItemType itemB = MyItemType.Parse("MyObjectBuilder_" + b.item);
-                    MyItemInfo itemInfoB = itemB.GetItemInfo();
-                    MyFixedPoint volumeB = b.qty * itemInfoB.Volume;
-                    return volumeB.ToIntSafe() - volumeA.ToIntSafe();
-                });
 
                 ShipJob job = new ShipJob();
-                List<ShipJob.Cargo> cargo = new List<ShipJob.Cargo>();
+                var mainCargo = jobs.fillShipFromTo(ship, srcdst[0], srcdst[1]);
 
-                foreach (var order in orders) {
-                    log($"Ordered cargo: {order.item} x {order.qty}");
-                    MyItemType itemType = MyItemType.Parse("MyObjectBuilder_" + order.item);
-                    MyItemInfo itemInfo = itemType.GetItemInfo();
+                if (ship.destination != srcdst[0]) {
+                    var opCargo = jobs.fillShipFromTo(ship, ship.destination, srcdst[0]);
+                    if (opCargo != null && opCargo.Count > 0) {
+                        ShipJob.Stage opPickup = new ShipJob.Stage();
+                        opPickup.destination = ship.destination;
+                        opPickup.dock = ship.dock;
+                        opPickup.action = chargePickup ? ShipJob.Stage.Action.ChargeLoad : ShipJob.Stage.Action.Load;
+                        opPickup.cargo = opCargo;
 
-                    ShipJob.Cargo item = new ShipJob.Cargo();
-                    item.item = order.item;
-                    item.qty = order.qty;
+                        ShipJob.Stage opDropoff = new ShipJob.Stage();
+                        opDropoff.destination = srcdst[0];
+                        opDropoff.dock = srcDock;
+                        opDropoff.action = ShipJob.Stage.Action.Unload;
+                        opDropoff.cargo = opCargo;
 
-                    if (!itemInfo.UsesFractions) item.qty = MyFixedPoint.Ceiling(item.qty);
+                        ShipJob.Stage mainPickup = new ShipJob.Stage();
+                        mainPickup.destination = src.gridName;
+                        mainPickup.dock = srcDock;
+                        mainPickup.action = chargePickup ? ShipJob.Stage.Action.ChargeLoad : ShipJob.Stage.Action.Load;
+                        mainPickup.cargo = mainCargo;
 
-                    MyFixedPoint maxQtyByVolume = ship.freeVolume * (1.0f / itemInfo.Volume);
-                    item.qty = MyFixedPoint.Min(item.qty, maxQtyByVolume);
+                        ShipJob.Stage mainDropoff = new ShipJob.Stage();
+                        mainDropoff.destination = dst.gridName;
+                        mainDropoff.dock = dstDock;
+                        mainDropoff.action = chargeDropoff ? ShipJob.Stage.Action.ChargeUnload : ShipJob.Stage.Action.Unload;
+                        mainDropoff.cargo = mainCargo;
 
-                    MyFixedPoint maxQtyByMass = (ship.maxMass == MyFixedPoint.Zero || ship.maxMass == MyFixedPoint.MaxValue)
-                        ? MyFixedPoint.MaxValue : ship.freeMass * (1.0f / itemInfo.Mass);
-                    item.qty = MyFixedPoint.Min(item.qty, maxQtyByMass);
+                        job.stages = new List<ShipJob.Stage>() { opPickup, opDropoff, mainPickup, mainDropoff };
 
-                    if (!itemInfo.UsesFractions) item.qty = MyFixedPoint.Floor(item.qty);
-
-                    if (item.qty <= 0) {
-                        log("Ship cannot carry any more.");
-                        log($"ordered={order.qty}\nvolume={maxQtyByVolume}\nmass={maxQtyByMass}");
-                        log($"freeMass={ship.freeMass}\nitemMass={itemInfo.Mass}");
-                        break;
+                        log($"Assigning job to {ship.name}:\n{job.ToString()}");
+                        ship.startJob(job);
+                        return;
                     }
-
-                    ship.freeVolume -= item.qty * itemInfo.Volume;
-                    ship.freeMass -= item.qty * itemInfo.Mass;
-                    cargo.Add(item);
-                    log($"Added cargo: {item.item} x {item.qty}");
                 }
 
                 ShipJob.Stage pickup = new ShipJob.Stage();
                 pickup.destination = src.gridName;
                 pickup.dock = srcDock;
                 pickup.action = chargePickup ? ShipJob.Stage.Action.ChargeLoad : ShipJob.Stage.Action.Load;
-                pickup.cargo = cargo;
+                pickup.cargo = mainCargo;
 
                 ShipJob.Stage dropoff = new ShipJob.Stage();
                 dropoff.destination = dst.gridName;
                 dropoff.dock = dstDock;
                 dropoff.action = chargeDropoff ? ShipJob.Stage.Action.ChargeUnload : ShipJob.Stage.Action.Unload;
-                dropoff.cargo = cargo;
+                dropoff.cargo = mainCargo;
 
                 job.stages = new List<ShipJob.Stage>() { pickup, dropoff };
 
@@ -816,6 +807,58 @@ namespace IngameScript
 
         public List<Order> getOrdersFromTo(string from, string to) {
             return orders.Where(o => o.source == from && o.dest == to).ToList();
+        }
+
+        public List<ShipJob.Cargo> fillShipFromTo(Program.Ship ship, string from, string to) {
+            var orders = getOrdersFromTo(from, to);
+            Program.program.log($"Orders: {orders.Count}");
+
+            orders.Sort((a, b) => {
+                MyItemType itemA = MyItemType.Parse("MyObjectBuilder_" + a.item);
+                MyItemInfo itemInfoA = itemA.GetItemInfo();
+                MyFixedPoint volumeA = a.qty * itemInfoA.Volume;
+                MyItemType itemB = MyItemType.Parse("MyObjectBuilder_" + b.item);
+                MyItemInfo itemInfoB = itemB.GetItemInfo();
+                MyFixedPoint volumeB = b.qty * itemInfoB.Volume;
+                return volumeB.ToIntSafe() - volumeA.ToIntSafe();
+            });
+
+            List<ShipJob.Cargo> cargo = new List<ShipJob.Cargo>();
+
+            foreach (var order in orders) {
+                Program.program.log($"Ordered cargo: {order.item} x {order.qty}");
+                MyItemType itemType = MyItemType.Parse("MyObjectBuilder_" + order.item);
+                MyItemInfo itemInfo = itemType.GetItemInfo();
+
+                ShipJob.Cargo item = new ShipJob.Cargo();
+                item.item = order.item;
+                item.qty = order.qty;
+
+                if (!itemInfo.UsesFractions) item.qty = MyFixedPoint.Ceiling(item.qty);
+
+                MyFixedPoint maxQtyByVolume = ship.freeVolume * (1.0f / itemInfo.Volume);
+                item.qty = MyFixedPoint.Min(item.qty, maxQtyByVolume);
+
+                MyFixedPoint maxQtyByMass = (ship.maxMass == MyFixedPoint.Zero || ship.maxMass == MyFixedPoint.MaxValue)
+                    ? MyFixedPoint.MaxValue : ship.freeMass * (1.0f / itemInfo.Mass);
+                item.qty = MyFixedPoint.Min(item.qty, maxQtyByMass);
+
+                if (!itemInfo.UsesFractions) item.qty = MyFixedPoint.Floor(item.qty);
+
+                if (item.qty <= 0) {
+                    Program.program.log("Ship cannot carry any more.");
+                    Program.program.log($"ordered={order.qty}\nvolume={maxQtyByVolume}\nmass={maxQtyByMass}");
+                    Program.program.log($"freeMass={ship.freeMass}\nitemMass={itemInfo.Mass}");
+                    break;
+                }
+
+                ship.freeVolume -= item.qty * itemInfo.Volume;
+                ship.freeMass -= item.qty * itemInfo.Mass;
+                cargo.Add(item);
+                Program.program.log($"Added cargo: {item.item} x {item.qty}");
+            }
+
+            return cargo;
         }
 
         public List<KeyValuePair<string,MyFixedPoint>> linksByVolume() {
