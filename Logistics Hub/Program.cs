@@ -558,10 +558,10 @@ namespace IngameScript
 
 
                 ShipJob job = new ShipJob();
-                var mainCargo = jobs.fillShipFromTo(ship, srcdst[0], srcdst[1]);
+                var mainCargo = jobs.fillShipFromTo(ship, src.gridName, dst.gridName);
 
-                if (ship.destination != srcdst[0]) {
-                    var opCargo = jobs.fillShipFromTo(ship, ship.destination, srcdst[0]);
+                if (ship.destination != "" && ship.destination != src.gridName) {
+                    var opCargo = jobs.fillShipFromTo(ship, ship.destination, src.gridName);
                     if (opCargo != null && opCargo.Count > 0) {
                         ShipJob.Stage opPickup = new ShipJob.Stage();
                         opPickup.destination = ship.destination;
@@ -570,7 +570,7 @@ namespace IngameScript
                         opPickup.cargo = opCargo;
 
                         ShipJob.Stage opDropoff = new ShipJob.Stage();
-                        opDropoff.destination = srcdst[0];
+                        opDropoff.destination = src.gridName;
                         opDropoff.dock = srcDock;
                         opDropoff.action = ShipJob.Stage.Action.Unload;
                         opDropoff.cargo = opCargo;
@@ -681,6 +681,7 @@ namespace IngameScript
             sb.AppendLine("_Ships_");
             foreach (Ship ship in ships) {
                 sb.AppendLine($"{ship.name}: {ship.state}");
+                sb.AppendLine($"   Dest: {ship.destination} @ {ship.dock}");
                 sb.AppendLine($"   {ship.job}");
             }
 

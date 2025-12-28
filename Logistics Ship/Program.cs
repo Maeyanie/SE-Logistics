@@ -165,22 +165,20 @@ namespace IngameScript
                 if (message.Tag == "MaeyLogistics-ShipJob") {
                     Echo($"Got new job: {message.Data as string}");
                     state = State.Starting;
-                    destination = "";
-                    dock = "";
                     step = 0;
                     job = ShipJob.deserialize(message.Data as string);
                     dirty = true;
                 }
             }
 
-            Echo($"Current State: {state.ToString()}");
+            /*Echo($"Current State: {state.ToString()}");
             Echo($"Destination: {destination}");
             Echo($"Dock: {dock}");
             if (job != null) {
                 Echo($"Step: {step+1}/{job.stages.Count}");
             } else {
                 Echo("No current job.");
-            }
+            }*/
 
             switch (state) {
                 case State.Idle: break;
@@ -212,7 +210,7 @@ namespace IngameScript
                 }
 
                 string msg = message.serialize();
-                Echo($"Update Sending: {msg}");
+                //Echo($"Update Sending: {msg}");
                 IGC.SendBroadcastMessage(channel, "ShipUpdate\n"+msg);
             }
         }
@@ -242,7 +240,7 @@ namespace IngameScript
             var stage = job.stages[step];
 
             if (destination != stage.destination || dock != stage.dock) {
-                Echo($"Travelling to next stage: {stage.destination} @ {stage.dock}");
+                Echo($"Travelling to next stage: {destination} @ {dock} -> {stage.destination} @ {stage.dock}");
                 destination = stage.destination;
                 dock = stage.dock;
                 travelTo(stage.destination, stage.dock);

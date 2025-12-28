@@ -24,8 +24,6 @@ namespace IngameScript
 {
     public class LeafUpdateMessage
     {
-        const bool ADD_ITEMS_TO_INI = false;
-
         public string gridName;
         public List<string> docks;
         public Dictionary<string, MyFixedPoint> exports;
@@ -83,77 +81,50 @@ namespace IngameScript
             }
 
             foreach (var item in storedItems) {
-                string type = item.Type.ToString();
+                string type = item.Type.ToString().Substring("MyObjectBuilder_".Length);
                 if (!stored.ContainsKey(type)) stored[type] = item.Amount;
                 else stored[type] += item.Amount;
-
-                if (ADD_ITEMS_TO_INI) {
-                    // MyObjectBuilder_Whatever -> Whatever
-                    type = item.Type.TypeId.Substring(16);
-                    if (!ini.ContainsKey(type, item.Type.SubtypeId))
-                    {
-                        iniDirty = true;
-                        ini.Set(type, item.Type.SubtypeId, "0");
-                    }
-                }
             }
 
-            processCategory(ini, "Ore", stored, ref iniDirty, parent);
-            processCategory(ini, "Ingot", stored, ref iniDirty, parent);
-            processCategory(ini, "Component", stored, ref iniDirty, parent);
-            processCategory(ini, "AmmoMagazine", stored, ref iniDirty, parent);
-            processCategory(ini, "SeedItem", stored, ref iniDirty, parent);
-            processCategory(ini, "ConsumableItem", stored, ref iniDirty, parent);
-            processCategory(ini, "PhysicalGunObject", stored, ref iniDirty, parent);
-
-            if (iniDirty) parent.Me.CustomData = ini.ToString();
-        }
-
-        void processCategory(MyIni ini, string category, Dictionary<string, MyFixedPoint> stored, ref bool iniDirty, MyGridProgram parent)
-        {
-            if (!ini.ContainsSection(category)) {
+            if (!ini.ContainsSection("Imports")) {
+                ini.AddSection("Imports");
                 iniDirty = true;
-                ini.AddSection(category);
-                return;
             }
-
             List<MyIniKey> keys = new List<MyIniKey>();
-            ini.GetKeys(category, keys);
+            ini.GetKeys("Imports", keys);
             foreach (var key in keys) {
-                var type = $"{category}/{key.Name}";
-                var entry = ini.Get(category, key.Name).ToString();
-
-                bool import = false;
-                bool export = false;
-                do {
-                    if (entry.EndsWith("I")) {
-                        import = true;
-                        entry = entry.Substring(0, entry.Length - 1);
-                        continue;
-                    }
-                    if (entry.EndsWith("E")) {
-                        export = true;
-                        entry = entry.Substring(0, entry.Length - 1);
-                        continue;
-                    }
-                    break;
-                } while (true);
-
-                var target = MyFixedPoint.DeserializeString(entry);
-                var current = stored.ContainsKey("MyObjectBuilder_" + type) ? stored["MyObjectBuilder_" + type] : MyFixedPoint.Zero;
-
-                parent.Echo($"{type}: {current}/{target} " + (import ? 'I' : '-') + (export ? 'E' : '-'));
-
-                if (target > current && import) {
+                var type = key.Name;
+                if (type.StartsWith("MyObjectBuilder_")) type = type.Substring("MyObjectBuilder_".Length);
+                var target = MyFixedPoint.DeserializeStringSafe(ini.Get("Imports", type).ToString("0"));
+                var current = stored.ContainsKey(type) ? stored[type] : MyFixedPoint.Zero;
+                parent.Echo($"Import {type}: {current}/{target}");
+                if (target > current) {
                     parent.Echo($"  Importing {target - current}");
                     imports[type] = target - current;
                 }
-                if (current > target && export) {
+            }
+
+            if (!ini.ContainsSection("Exports")) {
+                ini.AddSection("Exports");
+                iniDirty = true;
+            }
+            keys.Clear();
+            ini.GetKeys("Exports", keys);
+            foreach (var key in keys) {
+                var type = key.Name;
+                if (type.StartsWith("MyObjectBuilder_")) type = type.Substring("MyObjectBuilder_".Length);
+                var target = MyFixedPoint.DeserializeStringSafe(ini.Get("Exports", type).ToString("0"));
+                var current = stored.ContainsKey(type) ? stored[type] : MyFixedPoint.Zero;
+                parent.Echo($"Export {type}: {current}/{target}");
+                if (current > target) {
                     parent.Echo($"  Exporting {current - target}");
                     exports[type] = current - target;
                 }
             }
+
+            if (iniDirty) parent.Me.CustomData = ini.ToString();
         }
+
         public string serialize()
         {
             var sb = new StringBuilder();
