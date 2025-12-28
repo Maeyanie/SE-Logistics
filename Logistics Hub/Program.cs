@@ -5,6 +5,7 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Security.Permissions;
 using System.Text;
+using System.Text.RegularExpressions;
 using Sandbox.Game.EntityComponents;
 using Sandbox.Game.Replication.StateGroups;
 using Sandbox.ModAPI.Ingame;
@@ -328,9 +329,56 @@ namespace IngameScript
             }
 
             if (updateSource == UpdateType.Update100) {
-                if (++counter >= leaves.Count) counter = 0;
-                var leaf = leaves[counter];
-                if (counter == 0) {
+                counter++;
+                if (counter < leaves.Count) {
+                    var leaf = leaves[counter];
+
+                    if (counter == 0) {
+                        leaf.update(new LeafUpdateMessage(this));
+                        updateLCDs();
+                    }
+
+                    TimeSpan staleness = DateTime.Now - leaf.lastUpdate;
+                    if (staleness.TotalSeconds > 60) {
+                        log($"Warning: {leaf.gridName} hasn't reported in {staleness.TotalSeconds} seconds.");
+                        jobs.removeAll(leaf.gridName);
+                        return;
+                    }
+
+                    log($"Updating {leaf.gridName}...");
+                    jobs.removeDest(leaf.gridName);
+
+                    var needs = leaf.needed();
+                    if (needs == null || needs.Count == 0) {
+                        log("No demands.");
+                        return;
+                    }
+
+                    foreach (var need in needs) {
+                        var needed = leaf.needed(need);
+                        log($"Needs {needed} {need}");
+                        if (fulfillNeed(leaf, need, needed)) continue;
+
+                        if (!ini.ContainsKey("General", "RequestOresForIngots")) {
+                            ini.Set("General", "RequestOresForIngots", "false");
+                            Me.CustomData = ini.ToString();
+                        }
+                        if (ini.Get("General", "RequestOresForIngots").ToBoolean(false) && need.StartsWith("Ingot/")) {
+                            string ore = oreMap.GetValueOrDefault(need, "Ore/" + need.Substring(6));
+                            float oreYield = oreYields.GetValueOrDefault(ore.Substring(4), 0.7f);
+
+                            needed -= leaf.available(ore) * oreYield;
+                            if (needed <= 0) {
+                                log("Ore available sufficient to cover ingot need.");
+                                continue;
+                            }
+
+                            log($"No ingots available, trying {ore} instead.");
+                            fulfillNeed(leaf, ore, needed * (1.0f / oreYield));
+                        }
+                    }
+                } else {
+                    counter = -1;
                     if (ini.TryParse(Me.CustomData)) {
                         var shipString = ini.Get("General", "Ships").ToString();
                         if (shipString == null || shipString == "") {
@@ -355,57 +403,12 @@ namespace IngameScript
                         chargePickup = ini.Get("General", "ChargePickup").ToBoolean(true);
                         chargeDropoff = ini.Get("General", "ChargeDropoff").ToBoolean(true);
                     }
-                    leaf.update(new LeafUpdateMessage(this));
-
-                    updateLCDs();
 
                     var ship = Ship.firstAvailableShip();
                     if (ship == null) {
                         log("No free ships.");
                     } else {
                         dispatch(ship);
-                    }
-                }
-
-
-
-                TimeSpan staleness = DateTime.Now - leaf.lastUpdate;
-                if (staleness.TotalSeconds > 60) {
-                    log($"Warning: {leaf.gridName} hasn't reported in {staleness.TotalSeconds} seconds.");
-                    jobs.removeAll(leaf.gridName);
-                    return;
-                }
-
-                log($"Updating {leaf.gridName}...");
-                jobs.removeDest(leaf.gridName);
-
-                var needs = leaf.needed();
-                if (needs == null || needs.Count == 0) {
-                    log("No demands.");
-                    return;
-                }
-
-                foreach (var need in needs) {
-                    var needed = leaf.needed(need);
-                    log($"Needs {needed} {need}");
-                    if (fulfillNeed(leaf, need, needed)) continue;
-
-                    if (!ini.ContainsKey("General", "RequestOresForIngots")) {
-                        ini.Set("General", "RequestOresForIngots", "false");
-                        Me.CustomData = ini.ToString();
-                    }
-                    if (ini.Get("General", "RequestOresForIngots").ToBoolean(false) && need.StartsWith("Ingot/")) {
-                        string ore = oreMap.GetValueOrDefault(need, "Ore/" + need.Substring(6));
-                        float oreYield = oreYields.GetValueOrDefault(ore.Substring(4), 0.7f);
-
-                        needed -= leaf.available(ore) * oreYield;
-                        if (needed <= 0) {
-                            log("Ore available sufficient to cover ingot need.");
-                            continue;
-                        }
-
-                        log($"No ingots available, trying {ore} instead.");
-                        fulfillNeed(leaf, ore, needed * (1.0f / oreYield));
                     }
                 }
             }
@@ -444,7 +447,7 @@ namespace IngameScript
         }
 
         void handleShipUpdate(long source, string data) {
-            log($"Received ShipUpdate from {source}: {data}");
+            log($"Received ShipUpdate from {source}");
             ShipUpdateMessage sum = ShipUpdateMessage.deserialize(data);
             if (sum == null) return;
 
@@ -551,35 +554,43 @@ namespace IngameScript
             }
         }
 
+        static readonly System.Text.RegularExpressions.Regex reLogiStatus = new System.Text.RegularExpressions.Regex(@"\[LogiStatus(:[0-9]+)?\]");
+        static readonly System.Text.RegularExpressions.Regex reLogiJobs = new System.Text.RegularExpressions.Regex(@"\[LogiJobs(:[0-9]+)?\]");
+        static readonly System.Text.RegularExpressions.Regex reLogiLog = new System.Text.RegularExpressions.Regex(@"\[LogiLog(:[0-9]+)?\]");
         void updateLCDs() {
             List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
-            GridTerminalSystem.SearchBlocksOfName("[LogiStatus]", blocks);
+            GridTerminalSystem.SearchBlocksOfName("[Logi", blocks);
+
             foreach (var block in blocks) {
-                IMyTextSurface mts = block as IMyTextSurface;
-                if (mts != null) updateSurface_LogiStatus(mts);
+                var statusMatch = reLogiStatus.Match(block.CustomName);
+                if (statusMatch.Success) {
+                    IMyTextSurface mts = block as IMyTextSurface;
+                    if (mts != null) updateSurface_LogiStatus(mts);
 
-                IMyTextSurfaceProvider mtsp = block as IMyTextSurfaceProvider;
-                if (mtsp != null) updateSurface_LogiStatus(mtsp.GetSurface(0));
-            }
+                    IMyTextSurfaceProvider mtsp = block as IMyTextSurfaceProvider;
+                    int surfaceIndex = statusMatch.Groups[1].Success ? int.Parse(statusMatch.Groups[1].Value.Substring(1)) : 0;
+                    if (mtsp != null) updateSurface_LogiStatus(mtsp.GetSurface(surfaceIndex));
+                }
 
-            blocks.Clear();
-            GridTerminalSystem.SearchBlocksOfName("[LogiJobs]", blocks);
-            foreach (var block in blocks) {
-                IMyTextSurface mts = block as IMyTextSurface;
-                if (mts != null) updateSurface_LogiJobs(mts);
+                var jobsMatch = reLogiJobs.Match(block.CustomName);
+                if (jobsMatch.Success) {
+                    IMyTextSurface mts = block as IMyTextSurface;
+                    if (mts != null) updateSurface_LogiJobs(mts);
 
-                IMyTextSurfaceProvider mtsp = block as IMyTextSurfaceProvider;
-                if (mtsp != null) updateSurface_LogiJobs(mtsp.GetSurface(0));
-            }
+                    IMyTextSurfaceProvider mtsp = block as IMyTextSurfaceProvider;
+                    int surfaceIndex = jobsMatch.Groups[1].Success ? int.Parse(jobsMatch.Groups[1].Value.Substring(1)) : 0;
+                    if (mtsp != null) updateSurface_LogiJobs(mtsp.GetSurface(surfaceIndex));
+                }
 
-            blocks.Clear();
-            GridTerminalSystem.SearchBlocksOfName("[LogiLog]", blocks);
-            foreach (var block in blocks) {
-                IMyTextSurface mts = block as IMyTextSurface;
-                if (mts != null) updateSurface_LogiLog(mts);
+                var logMatch = reLogiLog.Match(block.CustomName);
+                if (logMatch.Success) {
+                    IMyTextSurface mts = block as IMyTextSurface;
+                    if (mts != null) updateSurface_LogiLog(mts);
 
-                IMyTextSurfaceProvider mtsp = block as IMyTextSurfaceProvider;
-                if (mtsp != null) updateSurface_LogiLog(mtsp.GetSurface(0));
+                    IMyTextSurfaceProvider mtsp = block as IMyTextSurfaceProvider;
+                    int surfaceIndex = logMatch.Groups[1].Success ? int.Parse(logMatch.Groups[1].Value.Substring(1)) : 0;
+                    if (mtsp != null) updateSurface_LogiLog(mtsp.GetSurface(surfaceIndex));
+                }
             }
         }
         void updateSurface_LogiStatus(IMyTextSurface surface) {
@@ -694,7 +705,7 @@ namespace IngameScript
         }
 
         public HashSet<Order> orders;
-        public List<KeyValuePair<string,MyFixedPoint>> linksByVolumeCache = null;
+        public List<KeyValuePair<string,double>> linksByVolumeCache = null;
 
         public JobBoard() {
             orders = new HashSet<Order>();
@@ -798,16 +809,16 @@ namespace IngameScript
             return cargo;
         }
 
-        public List<KeyValuePair<string,MyFixedPoint>> linksByVolume() {
+        public List<KeyValuePair<string,double>> linksByVolume() {
             if (linksByVolumeCache != null) return linksByVolumeCache;
 
-            Dictionary<string,MyFixedPoint> links = new Dictionary<string, MyFixedPoint>();
+            Dictionary<string,double> links = new Dictionary<string, double>();
 
             foreach (var order in orders) {
                 string link = $"{order.source}|{order.dest}";
                 var mobItem = MyItemType.Parse("MyObjectBuilder_" + order.item);
                 var itemInfo = mobItem.GetItemInfo();
-                MyFixedPoint volume = order.qty * itemInfo.Volume;
+                double volume = (double)order.qty * (double)itemInfo.Volume;
 
                 if (links.ContainsKey(link)) {
                     links[link] += volume;
@@ -817,7 +828,7 @@ namespace IngameScript
             }
 
             linksByVolumeCache = links.ToList();
-            linksByVolumeCache.Sort((a, b) => { return b.Value.ToIntSafe() - a.Value.ToIntSafe(); });
+            linksByVolumeCache.Sort((a, b) => b.Value.CompareTo(a.Value));
 
             return linksByVolumeCache;
         }
